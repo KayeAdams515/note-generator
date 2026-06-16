@@ -203,24 +203,29 @@ def main():
         print(f"检测到语言: {info.language}（概率: {info.language_probability:.2%}）", file=sys.stderr)
         print(f"音频时长: {info.duration:.2f} 秒", file=sys.stderr)
 
-        # Collect all segments with progress bar
-        import tqdm
-
+        # Collect segments, log progress at meaningful intervals
         full_text_parts = []
         segment_count = 0
+        last_log_pct = -1
 
-        with tqdm.tqdm(
-            total=round(info.duration, 2),
-            unit="s",
-            desc="转写进度",
-            file=sys.stderr,
-        ) as pbar:
-            for segment in segments:
-                text = segment.text.strip()
+        for segment in segments:
+            text = segment.text.strip()
+            if text:
                 print(text, flush=True)
                 full_text_parts.append(text)
-                segment_count += 1
-                pbar.update(round(segment.end - pbar.n, 2))
+            segment_count += 1
+
+            # Log progress at each 10% step of audio duration
+            current_pct = int(segment.end / info.duration * 100) if info.duration > 0 else 100
+            if current_pct >= last_log_pct + 10:
+                print(
+                    f"[转写进度] {min(current_pct, 100)}% — "
+                    f"{segment.end:.1f}s / {info.duration:.1f}s — "
+                    f"已识别 {segment_count} 个片段",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                last_log_pct = current_pct
 
         # Write output file
         full_text = "\n".join(full_text_parts)
