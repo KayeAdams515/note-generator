@@ -71,10 +71,11 @@ def extract_audio(input_path: str, output_path: str) -> None:
     video_exts = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v"}
     ext = os.path.splitext(input_path)[1].lower()
 
+    file_size = os.path.getsize(input_path)
     if ext in video_exts:
-        print("正在从视频中提取音频...", file=sys.stderr)
+        print(f"正在从视频中提取音频（{file_size / 1024 / 1024:.1f}MB）...", file=sys.stderr)
     else:
-        print("正在处理音频文件...", file=sys.stderr)
+        print(f"正在处理音频文件（{file_size / 1024 / 1024:.1f}MB）...", file=sys.stderr)
 
     try:
         subprocess.run(
@@ -87,6 +88,7 @@ def extract_audio(input_path: str, output_path: str) -> None:
             ],
             check=True, timeout=600,
         )
+        print("音频提取完成", file=sys.stderr)
     except FileNotFoundError:
         print("错误：未找到 ffmpeg，请先安装 ffmpeg。", file=sys.stderr)
         print("macOS: brew install ffmpeg", file=sys.stderr)
@@ -133,6 +135,7 @@ def detect_device(requested: str) -> tuple:
         pass
 
     print("使用设备: cpu (int8)", file=sys.stderr)
+    print("准备开始转写...", file=sys.stderr)
     return "cpu", "int8"
 
 
@@ -158,7 +161,6 @@ def download_from_url(url: str, temp_dir: str) -> tuple:
     print("正在获取视频信息...", file=sys.stderr)
 
     # First: fetch metadata only (with Edge cookies to bypass anti-scraping)
-    print("正在获取视频信息...", file=sys.stderr)
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -181,7 +183,7 @@ def download_from_url(url: str, temp_dir: str) -> tuple:
     safe_title = sanitize_filename(title)
     outtmpl = os.path.join(temp_dir, f"{safe_title}.%(ext)s")
 
-    print("正在下载视频...", file=sys.stderr)
+    print(f"正在下载视频（目标大小约 {duration * 0.5:.0f}MB）...", file=sys.stderr)
 
     # Closure state for progress hook
     last_pct = [-1]
@@ -355,7 +357,8 @@ def main():
             f.write(full_text)
 
         print(
-            f"\n转写完成！共 {segment_count} 个片段，输出文件：{output_path}",
+            f"\n转写完成！共 {segment_count} 个片段，"
+            f"音频时长 {info.duration:.0f} 秒，输出文件：{output_path}",
             file=sys.stderr,
         )
 
