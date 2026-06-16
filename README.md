@@ -18,7 +18,8 @@
 
 ## 工作流程
 
-1. 收集材料类型（语音稿/课件/现有笔记/其他）
+1. 收集材料类型（语音稿/课件/现有笔记/其他/视频文件）
+1.5 如有视频文件，选择转写参数并自动转写为文字稿
 2. 选择语言模式（纯中文/中文+术语对照/纯英文）
 3. 提供文件路径或粘贴内容
 4. 选择课程类型，自动加载对应生成规则
@@ -29,11 +30,18 @@
 ```
 note-generator/
 ├── SKILL.md                          # Skill 核心交互逻辑
+├── scripts/
+│   ├── transcribe.py                  # 视频/音频转写工具
+│   └── requirements.txt               # 转写工具 Python 依赖
 ├── references/
 │   ├── programming.md                # 编程类课程笔记生成规则
 │   └── non_programming.md            # 非编程类课程笔记生成规则
 └── README.md
 ```
+
+## 依赖
+
+视频转写功能需要：Python 3.8+、ffmpeg、faster-whisper
 
 ## 安装
 
