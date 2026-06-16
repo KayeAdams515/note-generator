@@ -1,6 +1,6 @@
 # Note Generator
 
-一个 Claude Code skill，将课程的语音转文字稿、课件、现有笔记等材料，生成结构化的 Markdown 格式笔记。
+一个 Claude Code skill，将课程的视频、语音转文字稿、课件、现有笔记等材料，生成结构化的 Markdown 格式笔记。
 
 ## 适用场景
 
