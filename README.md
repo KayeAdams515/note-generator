@@ -37,8 +37,20 @@ note-generator/
 
 ## 安装
 
-将本仓库克隆到你的 Claude Code skills 目录：
+### 全局安装（所有项目可用）
+
+将本仓库克隆到 Claude Code 的全局 skills 目录：
 
 ```bash
 git clone https://github.com/KayeAdams515/note-generator.git ~/.claude/skills/note-generator
 ```
+
+### 项目安装（仅当前项目可用）
+
+将本仓库克隆到项目的 `.claude/skills/` 目录：
+
+```bash
+git clone https://github.com/KayeAdams515/note-generator.git .claude/skills/note-generator
+```
+
+项目级 skill 仅在该项目目录下生效，适合不同项目需要不同 skill 版本的场景。
