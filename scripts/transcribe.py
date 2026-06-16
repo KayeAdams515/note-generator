@@ -157,8 +157,13 @@ def download_from_url(url: str, temp_dir: str) -> tuple:
 
     print("正在获取视频信息...", file=sys.stderr)
 
-    # First: fetch metadata only
-    opts = {"quiet": True, "no_warnings": True}
+    # First: fetch metadata only (with Edge cookies to bypass anti-scraping)
+    print("正在获取视频信息...", file=sys.stderr)
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "cookiesfrombrowser": ("edge",),
+    }
     with yt_dlp.YoutubeDL(opts) as ydl:
         try:
             info = ydl.extract_info(url, download=False)
@@ -205,6 +210,7 @@ def download_from_url(url: str, temp_dir: str) -> tuple:
         "quiet": True,
         "no_warnings": True,
         "progress_hooks": [progress_hook],
+        "cookiesfrombrowser": ("edge",),
     }
 
     with yt_dlp.YoutubeDL(download_opts) as ydl:
