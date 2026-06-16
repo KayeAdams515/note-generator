@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """
-音视频转写工具 — 使用 faster-whisper 将视频/音频文件转写为文字稿。
-支持 CUDA GPU 加速和实时进度显示。
+音视频转写工具 — 使用 faster-whisper 将视频/音频文件或在线视频转写为文字稿。
+支持 CUDA GPU 加速、本地文件转写、以及哔哩哔哩等在线视频下载后转写。
 
 用法：
+    # 本地文件
     python3 transcribe.py --input video.mp4 --language zh --model base
+    # 在线视频（哔哩哔哩等 yt-dlp 支持的站点）
+    python3 transcribe.py --url "https://www.bilibili.com/video/BV1xx411c7XX" --language zh --model base
 """
 
 import argparse
 import atexit
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -132,13 +136,114 @@ def detect_device(requested: str) -> tuple:
     return "cpu", "int8"
 
 
+def sanitize_filename(name: str) -> str:
+    """Remove characters unsafe for filenames."""
+    return re.sub(r'[\\/*?:"<>|]', "", name).strip()[:100]
+
+
+def download_from_url(url: str, temp_dir: str) -> tuple:
+    """
+    Download a video from a URL using yt-dlp and return (file_path, clean_title).
+    Raises ImportError if yt-dlp is not installed.
+    """
+    try:
+        import yt_dlp
+    except ImportError:
+        print(
+            "错误：未安装 yt-dlp，请运行：pip install yt-dlp",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print("正在获取视频信息...", file=sys.stderr)
+
+    # First: fetch metadata only
+    opts = {"quiet": True, "no_warnings": True}
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        try:
+            info = ydl.extract_info(url, download=False)
+        except Exception as e:
+            print(f"错误：无法获取视频信息：{e}", file=sys.stderr)
+            sys.exit(1)
+
+    title = info.get("title", "unknown")
+    duration = info.get("duration", 0)
+    print(f"视频标题: {title}", file=sys.stderr)
+    if duration:
+        print(f"视频时长: {duration:.0f} 秒", file=sys.stderr)
+
+    # Download to temp dir
+    safe_title = sanitize_filename(title)
+    outtmpl = os.path.join(temp_dir, f"{safe_title}.%(ext)s")
+
+    print("正在下载视频...", file=sys.stderr)
+
+    # Closure state for progress hook
+    last_pct = [-1]
+
+    def progress_hook(d):
+        if d["status"] == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            downloaded = d.get("downloaded_bytes", 0)
+            if total > 0:
+                pct = int(downloaded / total * 100)
+                if pct >= last_pct[0] + 20:
+                    print(
+                        f"[下载进度] {pct}% — "
+                        f"{downloaded / 1024 / 1024:.0f}MB / {total / 1024 / 1024:.0f}MB",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    last_pct[0] = pct
+        elif d["status"] == "finished":
+            print("下载完成，正在处理...", file=sys.stderr)
+
+    download_opts = {
+        "outtmpl": outtmpl,
+        "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+        "merge_output_format": "mp4",
+        "quiet": True,
+        "no_warnings": True,
+        "progress_hooks": [progress_hook],
+    }
+
+    with yt_dlp.YoutubeDL(download_opts) as ydl:
+        try:
+            ydl.download([url])
+        except Exception as e:
+            print(f"错误：下载失败：{e}", file=sys.stderr)
+            sys.exit(1)
+
+    # Find the downloaded file
+    downloaded = None
+    for f in os.listdir(temp_dir):
+        if f.startswith(safe_title):
+            candidate = os.path.join(temp_dir, f)
+            if os.path.isfile(candidate):
+                downloaded = candidate
+                break
+
+    if not downloaded or not os.path.isfile(downloaded):
+        print("错误：下载完成但未找到输出文件", file=sys.stderr)
+        sys.exit(1)
+
+    print("视频下载完成", file=sys.stderr)
+    return downloaded, safe_title
+
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="音视频转写工具 — 使用 faster-whisper 将视频/音频转写为文字稿"
+        description="音视频转写工具 — 使用 faster-whisper 将视频/音频或在线视频转写为文字稿"
     )
-    parser.add_argument(
-        "--input", "-i", required=True,
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument(
+        "--input", "-i",
         help="输入视频/音频文件路径",
+    )
+    source.add_argument(
+        "--url", "-u",
+        help="在线视频链接（支持哔哩哔哩等 yt-dlp 兼容站点）",
     )
     parser.add_argument(
         "--output", "-o", default=None,
@@ -161,13 +266,24 @@ def main():
     )
     args = parser.parse_args()
 
-    # Validate input file exists
-    if not os.path.isfile(args.input):
-        print(f"错误：找不到文件 '{args.input}'", file=sys.stderr)
-        sys.exit(1)
-
-    input_stem = os.path.splitext(os.path.basename(args.input))[0]
-    output_path = args.output if args.output else f"{input_stem}.transcript.txt"
+    # Handle URL input: download first, then treat as local file
+    if args.url:
+        temp_dir = tempfile.mkdtemp(prefix="transcribe_dl_")
+        atexit.register(lambda d=temp_dir: os.path.exists(d) and __import__('shutil').rmtree(d, ignore_errors=True))
+        downloaded_file, safe_title = download_from_url(args.url, temp_dir)
+        args.input = downloaded_file
+        args._downloaded_temp = downloaded_file  # mark for cleanup
+        output_path = args.output if args.output else f"{safe_title}.transcript.txt"
+    elif args.input:
+        # Validate input file exists
+        if not os.path.isfile(args.input):
+            print(f"错误：找不到文件 '{args.input}'", file=sys.stderr)
+            sys.exit(1)
+        input_stem = os.path.splitext(os.path.basename(args.input))[0]
+        output_path = args.output if args.output else f"{input_stem}.transcript.txt"
+    else:
+        # Should not happen with mutually_exclusive_group(required=True)
+        parser.error("必须指定 --input 或 --url")
 
     # Detect device
     device, compute_type = detect_device(args.device)
@@ -247,12 +363,13 @@ def main():
         print(f"错误：转写失败：{e}", file=sys.stderr)
         sys.exit(1)
     finally:
-        # Clean up temp file if we created one
+        # Clean up temp audio file if we created one
         if audio_path != args.input and os.path.exists(audio_path):
             try:
                 os.unlink(audio_path)
             except OSError:
                 pass
+        # Clean up downloaded temp video (temp_dir cleanup happens via atexit)
 
 
 if __name__ == "__main__":
